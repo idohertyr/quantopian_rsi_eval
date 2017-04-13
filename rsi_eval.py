@@ -16,7 +16,7 @@ def initialize(context):
     # Record tracking variables at the end of each day.
     schedule_function(my_record_vars, date_rules.every_day(), time_rules.market_close())
 
-    context.stock = sid(41968)
+    context.stock = sid(42477)
 
     # Define the products
     context.stocks = [context.stock]
@@ -25,8 +25,8 @@ def initialize(context):
     context.prices = {context.stock: 0}
 
     # Dictionary holding rsi signal levels
-    context.RSI_levels = [{ 'high': 60},
-                          { 'low': 40}]
+    context.RSI_levels = [{'high': 75},
+                          {'low': 25}]
 
     # Variable to count the average number of days in signal areas
     context.signal_period = {context.stock: 0}
@@ -48,6 +48,9 @@ def initialize(context):
 
     # Will execute trades after defined number of average signal periods
     context.enough_data = 1
+
+    # Variable to hold period type changed
+    context.period_changed = False
 
 def before_trading_start(context, data):
     """
@@ -72,17 +75,25 @@ def my_assign_weights(context, data):
             percentage_difference = ((difference/total_average))
             # Assign portfolio weight based on percentage difference
             if((signal_period_type == -1)):
-                if(context.weights[stock] > 1):
+                if(percentage_difference > 1):
+                    print ('Buying ALL')
                     context.weights[stock] = 1
                 else:
+                    #print ('Buying difference: ' + str(percentage_difference))
                     context.weights[stock] = percentage_difference
             elif(signal_period_type == 1):
                 neg_diff = 1 - (context.weights[stock] - percentage_difference)
-                if((percentage_difference > 1) | (difference < 0)):
+                if((percentage_difference > 1) | ((neg_diff) > 0)):
+                    print ('Selling ALL')
                     context.weights[stock] = 0
                 else:
-                    print ('sell difference: ' + str(neg_diff))
+                    #print ('Selling difference: ' + str(neg_diff))
                     context.weights[stock] = neg_diff
+            elif(signal_period_type == 0):
+                if(context.period_changed):
+                    print ('Signal Nuetral' + str(context.weights[stock]))
+                    context.weights[stock] = 0
+                    context.period_changed = False
     pass
 
 def my_rebalance(context, data):
@@ -165,7 +176,7 @@ def get_rsis_signal_type(context):
         rsi = context.rsis[stock]
         high = context.RSI_levels[0].get('high')
         low = context.RSI_levels[1].get('low')
-
+        prev = context.signal_period_type[stock]
         # RSI for stock is greater than the RSI_high
         # Change signal type and change signal period
         if (rsi >= high):
@@ -176,6 +187,13 @@ def get_rsis_signal_type(context):
             context.signal_period_type[stock] = -1
         else:
             print 'Not in Range'
+
+        new = context.signal_period_type[stock]
+
+        if(prev != new):
+            print ('Type changed!' + str(prev) + ' to ' + str(new))
+            context.type_changed = True
+
     pass
 
 
