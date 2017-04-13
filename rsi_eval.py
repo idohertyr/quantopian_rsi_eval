@@ -27,7 +27,7 @@ def initialize(context):
     # Record tracking variables at the end of each day.
     schedule_function(my_record_vars, date_rules.every_day(), time_rules.market_close())
 
-    context.stock = sid(42470)
+    context.stock = sid(24)
 
     # Define the products
     context.stocks = [context.stock]
