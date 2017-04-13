@@ -5,7 +5,7 @@ Ideas:
 1. Track areas above and below a specified RSI range. Track the average time
 in these signal areas correlated with the probability of trend change?
 
-2. Develop an RSI average
+2. Develop an RSI average? For a period of 20 days?
 """
 
 from quantopian.algorithm import attach_pipeline, pipeline_output
@@ -22,26 +22,22 @@ def initialize(context):
     Called once at the start of the algorithm.
     """
     # Rebalance every day, 1 hour after market open.
-    schedule_function(my_rebalance, date_rules.every_day(), time_rules.market_open(minutes=15))
+    schedule_function(my_rebalance, date_rules.every_day(), time_rules.market_open())
 
     # Record tracking variables at the end of each day.
     schedule_function(my_record_vars, date_rules.every_day(), time_rules.market_close())
 
-    # Update context data
-    schedule_function(update_data, date_rules.every_day(), time_rules.market_open())
+    context.stock = sid(42470)
 
     # Define the products
-    context.stocks = [sid(42477)]
-
-    # Dummy product
-    context.stock = sid(42477)
+    context.stocks = [context.stock]
 
     # Variable to hold prices for each Natural Gas tool
     context.prices = {context.stock: 0}
 
     # Dictionary holding rsi signal levels
-    context.RSI_levels = [{ 'high': 70},
-                          { 'low': 30}]
+    context.RSI_levels = [{ 'high': 65},
+                          { 'low': 35}]
 
     # Variable to count the average number of days in signal areas
     context.signal_period = {context.stock: 0}
@@ -58,21 +54,60 @@ def initialize(context):
     # Variable to hold RSI signal period averages
     context.signal_period_averages = {context.stock: 0}
 
+    # Variables to hold weights of each product
+    context.weights = {context.stock: 0}
+
+    # Will execute trades after defined number of average signal periods
+    context.enough_data = 1
+
 def before_trading_start(context, data):
     """
     Called every day before market open.
     """
+    update_data(context, data)
 
 def my_assign_weights(context, data):
     """
     Assign weights to securities that we want to order.
     """
+
+    for stock in context.stocks:
+        enough_data = (len(context.signal_periods[stock]) > context.enough_data)
+        signal_period = context.signal_period[stock]
+        signal_period_average = context.signal_period_averages[stock]
+        signal_period_type = context.signal_period_type[stock]
+        # Signal period is above average and there is enough sample data
+        if((signal_period > signal_period_average) & enough_data):
+            #print 'Signal period larger than average!'
+            difference = abs(signal_period - signal_period_average)
+            total_average = ((signal_period + signal_period_average)/2)
+            percentage_difference = ((difference/total_average))
+            # Based on type of signal, assign portfolio weight based on percentage difference
+            #   of the average period length.
+            if((signal_period_type == -1)):
+                if(context.weights[stock] > 1):
+                    context.weights[stock] = 1
+                else:
+                    context.weights[stock] = percentage_difference
+                #context.weights[stock] = percentage_difference
+            elif(signal_period_type == 1):
+                difference = context.weights[stock] - percentage_difference
+                if((percentage_difference > 1) | (difference < 0)):
+                    context.weights[stock] = 0
+                else:
+                    context.weights[stock] = difference
     pass
 
 def my_rebalance(context, data):
     """
     Execute orders according to our schedule_function() timing. 
     """
+    current_weight = (context.account.total_positions_value/context.portfolio.portfolio_value)
+    for stock in context.stocks:
+        if((data.can_trade(stock)) &
+           (context.account.buying_power > 0) &
+           (context.weights[stock] < 1)):
+                order_target_percent(stock, context.weights[stock])
     pass
 
 def my_record_vars(context, data):
@@ -83,8 +118,12 @@ def my_record_vars(context, data):
     # Record variables
     for stock in context.stocks:
         if (context.rsis[stock]):
-            record(rsi = context.rsis[stock],
-                  signal_type = (context.signal_period_type[stock] * 100))
+            record(
+                rsi = context.rsis[stock],
+                signal_type = (context.signal_period_type[stock]),
+                signal_period = context.signal_period[stock],
+                current_weight = (context.account.total_positions_value/context.portfolio.portfolio_value)
+            )
     pass
 
 def handle_data(context, data):
@@ -105,12 +144,10 @@ def update_data(context, data):
     update_signal_period_length(context)
     update_signal_period_average(context)
 
+    # Print Product information
+    #print_product_information(context)
 
-    for stock in context.stocks:
-        log.info('STOCK INFO')
-        print ('Current period: ' + str(context.signal_period[stock]) + '\n')
-        print ('Current Average: ' + str(context.signal_period_averages[stock]) + '\n')
-        print ('Current Type: ' + str(context.signal_period_type[stock]) + '\n')
+    my_assign_weights(context, data)
 
     pass
 
@@ -161,6 +198,7 @@ def get_rsis_signal_type(context):
         else:
             print 'Not in Range'
 
+
 # Daily: updates a signal period length -> used for average signal period lengths
 def update_signal_period_length(context):
     for stock in context.stocks:
@@ -174,6 +212,7 @@ def update_signal_period_length(context):
             add_signal_period(context, stock, period_length)
             reset_signal_count(context, stock)
 
+
 # Add a period to a stocks list of periods
 def add_signal_period(context, stock, period):
     context.signal_periods[stock].append(period)
@@ -185,3 +224,14 @@ def update_signal_period_average(context):
         if (len(context.signal_periods[stock]) > 0):
             context.signal_period_averages[stock] = np.average(context.signal_periods[stock])
         pass
+
+
+# Prints product information
+def print_product_information(context):
+    for stock in context.stocks:
+        log.info('STOCK INFO')
+        print ('Current period: ' + str(context.signal_period[stock]) + '\n')
+        print ('Current Average: ' + str(context.signal_period_averages[stock]) + '\n')
+        print ('Current Type: ' + str(context.signal_period_type[stock]) + '\n')
+
+    pass
