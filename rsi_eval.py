@@ -16,7 +16,7 @@ def initialize(context):
     # Record tracking variables at the end of each day.
     schedule_function(my_record_vars, date_rules.every_day(), time_rules.market_close())
 
-    context.stock = sid(24)
+    context.stock = sid(41968)
 
     # Define the products
     context.stocks = [context.stock]
@@ -25,8 +25,8 @@ def initialize(context):
     context.prices = {context.stock: 0}
 
     # Dictionary holding rsi signal levels
-    context.RSI_levels = [{ 'high': 65},
-                          { 'low': 35}]
+    context.RSI_levels = [{ 'high': 60},
+                          { 'low': 40}]
 
     # Variable to count the average number of days in signal areas
     context.signal_period = {context.stock: 0}
@@ -67,7 +67,7 @@ def my_assign_weights(context, data):
         signal_period_type = context.signal_period_type[stock]
         # Signal period is above average and there is enough sample data
         if((signal_period > signal_period_average) & enough_data):
-            difference = abs(signal_period - signal_period_average)
+            difference = (abs(signal_period - signal_period_average))
             total_average = ((signal_period + signal_period_average)/2)
             percentage_difference = ((difference/total_average))
             # Assign portfolio weight based on percentage difference
@@ -77,22 +77,23 @@ def my_assign_weights(context, data):
                 else:
                     context.weights[stock] = percentage_difference
             elif(signal_period_type == 1):
-                difference = context.weights[stock] - percentage_difference
+                neg_diff = 1 - (context.weights[stock] - percentage_difference)
                 if((percentage_difference > 1) | (difference < 0)):
                     context.weights[stock] = 0
                 else:
-                    context.weights[stock] = difference
+                    print ('sell difference: ' + str(neg_diff))
+                    context.weights[stock] = neg_diff
     pass
 
 def my_rebalance(context, data):
     """
     Execute orders according to our schedule_function() timing. 
     """
-    current_weight = (context.account.total_positions_value/context.portfolio.portfolio_value)
     for stock in context.stocks:
         if((data.can_trade(stock)) &
            (context.account.buying_power > 0) &
-           (context.weights[stock] < 1)):
+           (context.weights[stock] < 1) &
+           (context.weights[stock] > 0)):
                 order_target_percent(stock, context.weights[stock])
     pass
 
